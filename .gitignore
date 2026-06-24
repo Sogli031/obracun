@@ -1,0 +1,27 @@
+# --- Android / Gradle build ---
+.gradle/
+.kotlin/
+build/
+app/build/
+captures/
+.cxx/
+*.apk
+*.aab
+
+# --- IDE ---
+.idea/
+*.iml
+
+# --- Lokalna konfiguracija i tajne ---
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# --- Verifikacione slike / privremeno ---
+/*.png
+
+# --- Windows / OS ---
+nul
+Thumbs.db
+.DS_Store
