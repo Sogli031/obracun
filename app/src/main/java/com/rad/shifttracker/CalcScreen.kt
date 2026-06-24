@@ -43,6 +43,7 @@ fun CalcScreen() {
     val state = remember { CalcState() }
     var editDay by remember { mutableStateOf<Int?>(null) }
     var showAutoFill by remember { mutableStateOf(false) }
+    var showRangeFill by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
 
     val result = state.compute()
@@ -64,7 +65,7 @@ fun CalcScreen() {
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
             )
 
-            BasicInputsCard(state)
+            BasicInputsCard(state, onBulkFill = { showRangeFill = true })
             CalendarCard(state, onDayClick = { editDay = it }, onAutoFill = { showAutoFill = true })
             AdvancedCard(state, expanded = showAdvanced, onToggle = { showAdvanced = !showAdvanced })
             ResultCard(state, result)
@@ -90,10 +91,19 @@ fun CalcScreen() {
             onDismiss = { showAutoFill = false }
         )
     }
+
+    if (showRangeFill) {
+        CalcRangeFillDialog(
+            year = state.year,
+            month = state.month,
+            onConfirm = { from, to, shift -> state.fillRange(from, to, shift) },
+            onDismiss = { showRangeFill = false }
+        )
+    }
 }
 
 @Composable
-private fun BasicInputsCard(state: CalcState) {
+private fun BasicInputsCard(state: CalcState, onBulkFill: () -> Unit) {
     PopupCard(bgColor = THEME.bgCardElevated, borderColor = THEME.accentPrimary) {
         SectionLabel("Osnovni podaci")
 
@@ -116,22 +126,16 @@ private fun BasicInputsCard(state: CalcState) {
             )
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("Godine staža", color = THEME.textSecondary, style = MaterialTheme.typography.bodyMedium)
-            CalcStepper(value = state.yearsOfService, onChange = { state.yearsOfService = it }, min = 0, max = 50)
-        }
+        BoundDecimalField("Minuli rad (%)", state.minuliRadPercent, suffix = "%") { state.minuliRadPercent = it }
 
-        SectionLabel("Brigada")
-        CalcChoiceRow(
-            options = BrigadeType.values().toList(),
-            selected = state.brigadeType,
-            label = { it.label },
-            onSelect = { state.brigadeType = it },
-            maxPerRow = 2
+        SectionLabel("Popuna")
+        RoundedButton(
+            text = "Popuni opseg dana",
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+            bgColor = THEME.accentSecondary,
+            textColor = THEME.textDark,
+            bold = true,
+            onClick = onBulkFill
         )
 
         SectionLabel("Mesec")
@@ -278,10 +282,6 @@ private fun AdvancedCard(state: CalcState, expanded: Boolean, onToggle: () -> Un
             BoundDecimalField("Topli obrok / dan", state.foodPerDay) { state.foodPerDay = it }
             BoundDecimalField("Osnovica (bolovanje/GO)", state.payBaseHourly) { state.payBaseHourly = it }
             BoundDecimalField("Otežani uslovi (%)", state.difficultWorkConditionsPercent) { state.difficultWorkConditionsPercent = it }
-            BoundDecimalField("Regres (bruto)", state.regressGross) { state.regressGross = it }
-            BoundDecimalField("Ostalo / bonus (bruto)", state.bonusGross) { state.bonusGross = it }
-            BoundDecimalField("Akontacija (neto)", state.advanceNet) { state.advanceNet = it }
-            BoundDecimalField("Kredit / obustava (neto)", state.creditDeductionNet) { state.creditDeductionNet = it }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -341,14 +341,6 @@ private fun ResultCard(state: CalcState, result: CalcResult) {
         if (net.mealSpentNet > 0.0) CalcInfoRow("Topli obrok", "− ${money(net.mealSpentNet)}", THEME.danger, indent = true)
         if (net.unionDuesNet > 0.0) CalcInfoRow("Sindikalna članarina", "− ${money(net.unionDuesNet)}", THEME.danger, indent = true)
         CalcInfoRow("= Neto plata", money(net.displayPay), THEME.accentPrimary, bold = true)
-
-        val fp = result.finalPayment
-        if (fp.advancePaymentNet > 0.0 || fp.loanDeductionNet > 0.0) {
-            SectionLabel("Konačna isplata")
-            if (fp.advancePaymentNet > 0.0) CalcInfoRow("Akontacija", "− ${money(fp.advancePaymentNet)}", THEME.warning)
-            if (fp.loanDeductionNet > 0.0) CalcInfoRow("Kredit / obustava", "− ${money(fp.loanDeductionNet)}", THEME.warning)
-            CalcInfoRow("Preostalo za isplatu", money(fp.finalRemainingNetPay), THEME.success, bold = true)
-        }
 
         SectionLabel("Ulazni podaci")
         CalcInfoRow("Bruto satnica", "${money(result.grossHourlyRate)} (${numberText(result.hourlyValue)} × ${numberText(state.coefficient)})")

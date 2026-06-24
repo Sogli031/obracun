@@ -80,7 +80,11 @@ enum class ShiftFillMode(val label: String) {
     ONE_SHIFT("Jedna smena"),
     FIRST_SECOND("Prva/Druga"),
     THREE_BRIGADE("Trobrigada"),
-    FOUR_BRIGADE("Četvorobrigada")
+    FOUR_BRIGADE("Četvorobrigada");
+
+    /** Brigada koja se koristi za obračun kad se mesec popuni ovim ciklusom. */
+    val brigadeType: BrigadeType
+        get() = if (this == FOUR_BRIGADE) BrigadeType.CETVOROBRIGADA else BrigadeType.TROBRIGADA
 }
 
 data class ShiftFillSettings(

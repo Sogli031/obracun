@@ -13,7 +13,6 @@ data class CalcResult(
     val summary: MonthSummary,
     val netBreakdown: MonthlyNetPayBreakdown,
     val payDetails: MonthlyPayDetails,
-    val finalPayment: MonthlyFinalPaymentBreakdown,
     val grossHourlyRate: Double,
     val hourlyValue: Double
 )
@@ -27,7 +26,7 @@ class CalcState {
     var year by mutableStateOf(YearMonth.now().year)
     var month by mutableStateOf(YearMonth.now().monthValue)
     var coefficient by mutableStateOf(CONFIG.pay.defaultCoefficient)
-    var yearsOfService by mutableStateOf(0)
+    var minuliRadPercent by mutableStateOf(0.0)
     var brigadeType by mutableStateOf(BrigadeType.TROBRIGADA)
 
     // --- Napredno (default iz CONFIG.pay) ---
@@ -40,15 +39,9 @@ class CalcState {
     var startingCompBalance by mutableStateOf(0)
     var unionMember by mutableStateOf(false)
     var unionDuesRate by mutableStateOf(DEFAULT_UNION_DUES_RATE)
-    var regressGross by mutableStateOf(0.0)
-    var bonusGross by mutableStateOf(0.0)
-    var advanceNet by mutableStateOf(0.0)
-    var creditDeductionNet by mutableStateOf(0.0)
 
     /** Dan u mesecu (1..31) -> zapis. Prazni dani (OFF) se ne čuvaju. */
     val records: SnapshotStateMap<Int, DayRecord> = mutableStateMapOf()
-
-    val monthKey: MonthKey get() = MonthKey(year, month)
 
     fun setDay(day: Int, record: DayRecord?) {
         if (record == null || (record.shift == Shift.OFF && record.shift2 == null)) {
@@ -64,6 +57,7 @@ class CalcState {
 
     /** Auto-popuna meseca po izabranom ciklusu smena (kao u glavnoj app, ali samo za ovaj mesec). */
     fun autoFill(settings: ShiftFillSettings) {
+        brigadeType = settings.mode.brigadeType
         val scheduler = ShiftScheduler()
         records.clear()
         val daysInMonth = YearMonth.of(year, month).lengthOfMonth()
@@ -76,10 +70,31 @@ class CalcState {
         }
     }
 
+    /**
+     * Bulk popuna opsega dana (od..do) istom smenom/tipom.
+     * [shift] == OFF briše dane u opsegu. Radne smene i bolovanje/godišnji dobijaju podrazumevane sate.
+     */
+    fun fillRange(fromDay: Int, toDay: Int, shift: Shift) {
+        val daysInMonth = YearMonth.of(year, month).lengthOfMonth()
+        val start = minOf(fromDay, toDay).coerceIn(1, daysInMonth)
+        val end = maxOf(fromDay, toDay).coerceIn(1, daysInMonth)
+        for (day in start..end) {
+            val record = when (shift) {
+                Shift.OFF -> null
+                Shift.SICK -> DayRecord(year, month, day, Shift.SICK, CONFIG.pay.defaultHours, sickPayRate = CONFIG.pay.sickPayRate)
+                else -> DayRecord(year, month, day, shift, CONFIG.pay.defaultHours)
+            }
+            setDay(day, record)
+        }
+    }
+
+    // Korisnik direktno unosi procenat minulog rada (%). Obračun ga primenjuje preko
+    // minuliRadPerYear uz yearsOfService = 1, pa je efektivna stopa tačno uneti procenat.
     private fun payConfig(): PayConfig = CONFIG.pay.copy(
         foodPerDay = foodPerDay,
         sickPayBaseHourly = payBaseHourly,
-        difficultWorkConditionsPercent = difficultWorkConditionsPercent
+        difficultWorkConditionsPercent = difficultWorkConditionsPercent,
+        minuliRadPerYear = minuliRadPercent / 100.0
     )
 
     private fun payBases(): ResolvedPayBases = ResolvedPayBases.fromDefaults(
@@ -102,18 +117,11 @@ class CalcState {
             records = recordList,
             baseRate = grossHourlyRate,
             startingCompBalance = startingCompBalance,
-            yearsOfService = yearsOfService,
+            yearsOfService = if (minuliRadPercent > 0.0) 1 else 0,
             brigadeType = brigadeType,
             summaryYear = year,
             summaryMonth = month,
             payBases = bases
-        )
-
-        val grossAdditions = MonthlyGrossAdditions(
-            year = year,
-            month = month,
-            regressGross = regressGross,
-            bonusGross = bonusGross
         )
 
         val netBreakdown = calculateMonthlyNetPayBreakdown(
@@ -123,7 +131,7 @@ class CalcState {
             contributionsPercent = contributionsPercent,
             taxRelief = taxRelief,
             taxPercent = taxPercent,
-            grossAdditions = grossAdditions,
+            includeRegress = false,
             unionMember = unionMember,
             unionDuesRate = unionDuesRate
         )
@@ -137,19 +145,10 @@ class CalcState {
             payBases = bases
         )
 
-        val finalPayment = calculateMonthlyFinalPaymentBreakdown(
-            month = monthKey,
-            isNetPayAvailable = netBreakdown.displayPay > 0.0,
-            netPayBeforeAdvance = netBreakdown.displayPay,
-            advancePaymentNet = advanceNet,
-            loanDeductionNet = creditDeductionNet
-        )
-
         return CalcResult(
             summary = summary,
             netBreakdown = netBreakdown,
             payDetails = payDetails,
-            finalPayment = finalPayment,
             grossHourlyRate = grossHourlyRate,
             hourlyValue = hourlyValue
         )
