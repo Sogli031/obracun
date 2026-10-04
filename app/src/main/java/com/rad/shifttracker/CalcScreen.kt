@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -37,10 +38,21 @@ import androidx.compose.ui.unit.dp
 import java.time.YearMonth
 
 private val WEEKDAY_LABELS = listOf("Pon", "Uto", "Sre", "Čet", "Pet", "Sub", "Ned")
+private const val CALC_PREFERENCES = "obracun_settings"
+private const val HOURLY_VALUE_KEY = "hourly_value"
 
 @Composable
 fun CalcScreen() {
-    val state = remember { CalcState() }
+    val context = LocalContext.current
+    val preferences = remember(context) {
+        context.getSharedPreferences(CALC_PREFERENCES, android.content.Context.MODE_PRIVATE)
+    }
+    val state = remember(preferences) {
+        val savedHourlyValue = preferences.getString(HOURLY_VALUE_KEY, null)
+            ?.toDoubleOrNull()
+            ?.takeIf { it > 0.0 }
+        CalcState(savedHourlyValue ?: defaultHourlyValueForMonth(YearMonth.now().year, YearMonth.now().monthValue))
+    }
     var editDay by remember { mutableStateOf<Int?>(null) }
     var showAutoFill by remember { mutableStateOf(false) }
     var showRangeFill by remember { mutableStateOf(false) }
@@ -65,7 +77,13 @@ fun CalcScreen() {
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
             )
 
-            BasicInputsCard(state, onBulkFill = { showRangeFill = true })
+            BasicInputsCard(
+                state = state,
+                onHourlyValueChanged = { value ->
+                    preferences.edit().putString(HOURLY_VALUE_KEY, value.toString()).apply()
+                },
+                onBulkFill = { showRangeFill = true }
+            )
             CalendarCard(state, onDayClick = { editDay = it }, onAutoFill = { showAutoFill = true })
             AdvancedCard(state, expanded = showAdvanced, onToggle = { showAdvanced = !showAdvanced })
             ResultCard(state, result)
@@ -103,7 +121,11 @@ fun CalcScreen() {
 }
 
 @Composable
-private fun BasicInputsCard(state: CalcState, onBulkFill: () -> Unit) {
+private fun BasicInputsCard(
+    state: CalcState,
+    onHourlyValueChanged: (Double) -> Unit,
+    onBulkFill: () -> Unit
+) {
     PopupCard(bgColor = THEME.bgCardElevated, borderColor = THEME.accentPrimary) {
         SectionLabel("Osnovni podaci")
 
@@ -124,6 +146,13 @@ private fun BasicInputsCard(state: CalcState, onBulkFill: () -> Unit) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.width(140.dp).height(56.dp)
             )
+        }
+
+        BoundDecimalField("Vrednost sata", state.hourlyValue, suffix = "RSD") { value ->
+            if (value > 0.0) {
+                state.hourlyValue = value
+                onHourlyValueChanged(value)
+            }
         }
 
         BoundDecimalField("Minuli rad (%)", state.minuliRadPercent, suffix = "%") { state.minuliRadPercent = it }

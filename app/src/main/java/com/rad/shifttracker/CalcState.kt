@@ -21,11 +21,12 @@ data class CalcResult(
  * In-memory držač stanja za prost obračun plate za JEDAN mesec.
  * Ništa se ne perzistira — kad se app zatvori, stanje nestaje.
  */
-class CalcState {
+class CalcState(initialHourlyValue: Double = defaultHourlyValueForMonth(YearMonth.now().year, YearMonth.now().monthValue)) {
     // --- Osnovno ---
     var year by mutableStateOf(YearMonth.now().year)
     var month by mutableStateOf(YearMonth.now().monthValue)
     var coefficient by mutableStateOf(CONFIG.pay.defaultCoefficient)
+    var hourlyValue by mutableStateOf(initialHourlyValue)
     var minuliRadPercent by mutableStateOf(0.0)
     var brigadeType by mutableStateOf(BrigadeType.TROBRIGADA)
 
@@ -106,8 +107,8 @@ class CalcState {
     )
 
     fun compute(): CalcResult {
-        val hourlyValue = defaultHourlyValueForMonth(year, month)
-        val grossHourlyRate = coefficient * hourlyValue
+        val selectedHourlyValue = hourlyValue
+        val grossHourlyRate = coefficient * selectedHourlyValue
         val config = payConfig()
         val calculator = PayCalculator(config)
         val bases = payBases()
@@ -150,7 +151,7 @@ class CalcState {
             netBreakdown = netBreakdown,
             payDetails = payDetails,
             grossHourlyRate = grossHourlyRate,
-            hourlyValue = hourlyValue
+            hourlyValue = selectedHourlyValue
         )
     }
 }

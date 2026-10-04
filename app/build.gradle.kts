@@ -5,6 +5,9 @@ plugins {
     id("io.gitlab.arturbosch.detekt")
 }
 
+// Zajednički potpis: Desktop\programi\keystore
+rootProject.file("../keystore/signing.gradle").takeIf { it.exists() }?.let { apply(from = it) }
+
 android {
     namespace = "com.rad.shifttracker"
     compileSdk = 35

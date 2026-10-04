@@ -1304,4 +1304,75 @@ class PayCalculatorTest {
         // Weekend comp time: prva smena ne ide u platu
         assertEquals(0.0, result, 0.01)
     }
+
+    @Test
+    fun `nedeljni minuti trece smene se dele hronoloski na redovni i prekovremeni deo`() {
+        // Subotnja treća smena (22-06): prvih 120 min je subota, ostatak nedelja.
+        // 8h sa 120 min prekovremenih na kraju: redovnih 360 min sadrži 240
+        // nedeljnih, prekovremenih 120 min je celo u nedelji.
+        val (satRegular, satOvertime) = splitSundayMinutes(
+            Weekday.SATURDAY, Shift.THIRD, 360, 120, BrigadeType.CETVOROBRIGADA
+        )
+        assertEquals(240, satRegular)
+        assertEquals(120, satOvertime)
+
+        // Nedeljna treća smena: samo prvih 120 min (do ponoći) je nedelja —
+        // prekovremeni deo na kraju smene pada u ponedeljak, bez dodatka.
+        val (sunRegular, sunOvertime) = splitSundayMinutes(
+            Weekday.SUNDAY, Shift.THIRD, 420, 60, BrigadeType.CETVOROBRIGADA
+        )
+        assertEquals(120, sunRegular)
+        assertEquals(0, sunOvertime)
+    }
+
+    @Test
+    fun `cetvorobrigada prekovremeni ne zavisi od polozaja praznika u mesecu`() {
+        // Mart 2026: fond 176h. 23 dana × 8h = 184h → 8h prekovremeno.
+        // Radni praznik ne nosi prekovremene (plaća se kroz prazničnu premiju),
+        // pa se višak preliva na običan dan — bez obzira gde praznik pada.
+        fun records(holidayDay: Int) = (2..24).map { day ->
+            DayRecord(
+                2026, 3, day, Shift.FIRST, 8,
+                holidayOverride = if (day == holidayDay) true else null,
+                holidayWorkOverride = if (day == holidayDay) true else null
+            )
+        }
+
+        val holidayAtStart = calculator.calculateMonthSummary(
+            records = records(2),
+            baseRate = 300.0,
+            brigadeType = BrigadeType.CETVOROBRIGADA,
+            summaryYear = 2026,
+            summaryMonth = 3
+        )
+        val holidayAtEnd = calculator.calculateMonthSummary(
+            records = records(24),
+            baseRate = 300.0,
+            brigadeType = BrigadeType.CETVOROBRIGADA,
+            summaryYear = 2026,
+            summaryMonth = 3
+        )
+
+        assertEquals(8, holidayAtStart.overtimeHours)
+        assertEquals(8, holidayAtEnd.overtimeHours)
+        assertEquals(holidayAtStart.totalPay, holidayAtEnd.totalPay, 0.01)
+    }
+
+    @Test
+    fun `iskorisceni sati na danu sa manjkom se ne skidaju duplo sa balansa`() {
+        // OFF radni dan (ponedeljak) sa "iskoristi 8h": manjak i iskorišćeni
+        // sati istog dana se preklapaju — balans pada 8h, ne 16h.
+        val result = calculator.calculateMonthSummary(
+            records = listOf(DayRecord(2025, 3, 3, Shift.OFF, 0, compHoursUsed = 8)),
+            baseRate = 300.0,
+            startingCompBalance = 20,
+            summaryYear = 2025,
+            summaryMonth = 3
+        )
+
+        assertEquals(-480, result.compTimeNetMinutes)
+        assertEquals(20 * 60 - 480, result.compTimeEndingMinutes)
+        // Pokriven manjak se plaća jednom: 8h × 300
+        assertEquals(2_400.0, result.totalPay, 0.01)
+    }
 }
